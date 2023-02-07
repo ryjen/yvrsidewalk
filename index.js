@@ -11,6 +11,8 @@ for (let i = 0; i < ENV_VARS.length; i++) {
   if (process.env[envVar] === undefined) {
     console.log(`Missing ${envVar} environment variable`);
     process.exit(1);
+  } else {
+    console.log(`${envVar}: ${process.env[envVar]}`);
   }
 }
 const RPC_URL = process.env.RPC_URL;
@@ -48,7 +50,7 @@ setInterval(() => {
     .catch(() => {
       console.log("failed to change text");
     });
-}, 5 * 60 * 1000);
+}, 1 * 60 * 1000);
 
 const onBlock = async (b) => {
   const block = await provider.getBlockWithTransactions(b);

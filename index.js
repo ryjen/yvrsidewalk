@@ -48,7 +48,7 @@ setInterval(() => {
     .catch(() => {
       console.log("failed to change text");
     });
-}, 1 * 60 * 1000);
+}, 1 * 1000);
 
 const onBlock = async (b) => {
   const block = await provider.getBlockWithTransactions(b);
@@ -58,7 +58,7 @@ const onBlock = async (b) => {
       (x.value || ethers.constants.Zero).gte(ethers.utils.parseUnits("1"))
     );
 
-  console.log(b, "relevantTxs", relevantTxs);
+  console.log(b, "Payment Txs", relevantTxs);
 
   // Add to the queue
   relevantTxs.forEach((x) => {

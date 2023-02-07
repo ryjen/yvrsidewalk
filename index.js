@@ -48,7 +48,7 @@ setInterval(() => {
     .catch(() => {
       console.log("failed to change text");
     });
-}, 1 * 1000);
+}, 5 * 60 * 1000);
 
 const onBlock = async (b) => {
   const block = await provider.getBlockWithTransactions(b);

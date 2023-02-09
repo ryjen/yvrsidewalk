@@ -1,9 +1,11 @@
-// 1. Listens to payments to [ADDRESS}
-// 2. Decodes the inputs
-// 3. Pings sidewalk controller
-
 require("dotenv").config();
 const ethers = require("ethers");
+const asyncHandler = require("express-async-handler");
+const express = require("express");
+const morgan = require("morgan");
+const bodyParser = require("body-parser");
+
+// **** Block listener ****
 
 const ENV_VARS = ["RPC_URL", "MULTISIG_ADDRESS"];
 for (let i = 0; i < ENV_VARS.length; i++) {
@@ -72,4 +74,23 @@ const onBlock = async (b) => {
 
 provider.on("block", (b) => {
   onBlock(b);
+});
+
+// **** Server ****
+
+const app = express();
+const port = 3030;
+
+app.use(morgan("combined"));
+app.use(bodyParser.json());
+
+app.get(
+  "/queue",
+  asyncHandler(async (req, res) => {
+    res.json({ queue });
+  })
+);
+
+app.listen(port, () => {
+  console.log(`Express server running on port ${port}`);
 });

@@ -91,6 +91,6 @@ app.get(
   })
 );
 
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log(`Express server running on port ${port}`);
 });

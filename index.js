@@ -79,7 +79,7 @@ provider.on("block", (b) => {
 // **** Server ****
 
 const app = express();
-const port = 3030;
+const port = 3031;
 
 app.use(morgan("combined"));
 app.use(bodyParser.json());

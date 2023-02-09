@@ -1,4 +1,5 @@
 require("dotenv").config();
+const cors = require('cors')
 const ethers = require("ethers");
 const asyncHandler = require("express-async-handler");
 const express = require("express");
@@ -83,6 +84,7 @@ const port = 4000;
 
 app.use(morgan("combined"));
 app.use(bodyParser.json());
+app.use(cors())
 
 app.get(
   "/queue",

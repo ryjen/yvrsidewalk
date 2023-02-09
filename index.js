@@ -83,6 +83,7 @@ const app = express();
 const port = 4000;
 
 app.use(cors())
+app.options('*', cors());
 app.use(morgan("combined"));
 app.use(bodyParser.json());
 

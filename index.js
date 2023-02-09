@@ -82,9 +82,9 @@ provider.on("block", (b) => {
 const app = express();
 const port = 4000;
 
+app.use(cors())
 app.use(morgan("combined"));
 app.use(bodyParser.json());
-app.use(cors())
 
 app.get(
   "/queue",

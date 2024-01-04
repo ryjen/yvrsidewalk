@@ -100,6 +100,7 @@ app.use(cors());
 app.options("*", cors());
 app.use(morgan("combined"));
 app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 
 var privateKey = fs.readFileSync("key.pem", "utf8");
 var certificate = fs.readFileSync("cert.pem", "utf8");
@@ -115,24 +116,33 @@ app.get(
   }),
 );
 
+const wrapAsync = (fn) => (req, res, next) => fn(req, res, next).catch(next);
+
 app.post(
   "/zap",
-  asyncHandler(async (req, res) => {
+  wrapAsync(async (req, res) => {
     console.log("zapping");
     try {
-      const response = await fetch(
-        `${LNBITS_DOMAIN}/lnurlp/api/v1/links/${LNBITS_LINK_ID}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Api-Key": LNBITS_API_KEY,
-          },
+      const request = JSON.stringify({
+        out: false,
+        ...req.body,
+      });
+      const response = await fetch(`https://${LNBITS_DOMAIN}/api/v1/payments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Api-Key": LNBITS_API_KEY,
         },
-      );
+        body: request,
+      });
 
-      const { lnurl } = response.data;
-      res.json({ lnurl });
+      // TODO: store
+
+      const data = await response.json();
+
+      const { payment_hash } = data;
+
+      return { payment_hash };
     } catch (error) {
       console.error("Error creating LNBits invoice:", error.message);
       res.status(500).json({ error: "Internal Server Error" });

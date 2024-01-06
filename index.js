@@ -13,7 +13,6 @@ const https = require("https");
 const ENV_VARS = [
   "RPC_URL",
   "MULTISIG_ADDRESS",
-  "LNBITS_LINK_ID",
   "LNBITS_DOMAIN",
   "LNBITS_API_KEY",
 ];
@@ -30,7 +29,6 @@ const RPC_URL = process.env.RPC_URL;
 const MULTISIG_ADDRESS = process.env.MULTISIG_ADDRESS.toLowerCase();
 const LNBITS_DOMAIN = process.env.LNBITS_DOMAIN;
 const LNBITS_API_KEY = process.env.LNBITS_API_KEY;
-const LNBITS_LINK_ID = process.env.LNBITS_LINK_ID;
 
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 
@@ -77,7 +75,9 @@ const onBlock = async (b) => {
       (x.value || ethers.constants.Zero).gte(ethers.utils.parseUnits("1")),
     );
 
-  console.log(b, "Payment Txs", relevantTxs);
+  if (relevantTxs.length) {
+    console.log(b, "Payment Txs", relevantTxs);
+  }
 
   // Add to the queue
   relevantTxs.forEach((x) => {
@@ -116,16 +116,16 @@ app.get(
   }),
 );
 
-const wrapAsync = (fn) => (req, res, next) => fn(req, res, next).catch(next);
-
 app.post(
   "/zap",
-  wrapAsync(async (req, res) => {
+  asyncHandler(async (req, res) => {
     console.log("zapping");
     try {
+      let data = req.body;
       const request = JSON.stringify({
         out: false,
-        ...req.body,
+        amount: data.amount,
+        memo: data.memo,
       });
       const response = await fetch(`https://${LNBITS_DOMAIN}/api/v1/payments`, {
         method: "POST",
@@ -138,11 +138,11 @@ app.post(
 
       // TODO: store
 
-      const data = await response.json();
+      data = await response.json();
 
       const { payment_hash } = data;
 
-      return { payment_hash };
+      res.status(200).json({ payment_hash });
     } catch (error) {
       console.error("Error creating LNBits invoice:", error.message);
       res.status(500).json({ error: "Internal Server Error" });

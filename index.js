@@ -15,14 +15,15 @@ const ENV_VARS = [
   "MULTISIG_ADDRESS",
   "LNBITS_DOMAIN",
   "LNBITS_API_KEY",
+  "BANNER_ENDPOINT",
+  "TLS_KEY_PATH",
+  "TLS_CERT_PATH",
 ];
 for (let i = 0; i < ENV_VARS.length; i++) {
   const envVar = ENV_VARS[i];
-  if (process.env[envVar] === undefined) {
-    console.log(`Missing ${envVar} environment variable`);
+  if (!process.env[envVar]) {
+    console.error(`Missing ${envVar} environment variable`);
     process.exit(1);
-  } else {
-    console.log(`${envVar}: ${process.env[envVar]}`);
   }
 }
 const RPC_URL = process.env.RPC_URL;
@@ -46,7 +47,7 @@ setInterval(
 
     // TODO:
     console.log(`Changing text to ${curString}`);
-    fetch("http://192.168.1.51:3456/startshow", {
+    fetch(process.env.BANNER_ENDPOINT, {
       headers: {
         accept: "*/*",
         "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
@@ -102,10 +103,11 @@ app.use(morgan("combined"));
 app.use(bodyParser.json());
 app.use(express.urlencoded({ extended: true }));
 
-var privateKey = fs.readFileSync("key.pem", "utf8");
-var certificate = fs.readFileSync("cert.pem", "utf8");
+// TLS private material is provisioned outside the repository.
+const privateKey = fs.readFileSync(process.env.TLS_KEY_PATH, "utf8");
+const certificate = fs.readFileSync(process.env.TLS_CERT_PATH, "utf8");
 
-var credentials = { key: privateKey, cert: certificate };
+const credentials = { key: privateKey, cert: certificate };
 
 var httpsServer = https.createServer(credentials, app);
 

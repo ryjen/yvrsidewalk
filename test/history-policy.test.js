@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createHistoryHandler, sanitizeTransactions } = require("../lib/history-policy");
+const { createHistoryHandler, sanitizeTransactions, readResponseBounded } = require("../lib/history-policy");
 const addr = "0x" + "a".repeat(40);
 const outgoing = "0x" + "b".repeat(40);
 const hash = "0x" + "c".repeat(64);
@@ -125,4 +125,49 @@ test("provider failures are negatively cached to bound upstream spend", async ()
   clock += 30001;
   await handler({}, response());
   assert.equal(calls, 2);
+});
+
+test("response stream stops reading as soon as size cap is exceeded", async () => {
+  let reads = 0, cancellations = 0, releases = 0;
+  const response = {
+    body: { getReader() {
+      return {
+        async read() {
+          reads++;
+          return { done: false, value: new Uint8Array(140000) };
+        },
+        async cancel() { cancellations++; },
+        releaseLock() { releases++; },
+      };
+    }},
+  };
+  await assert.rejects(readResponseBounded(response), /oversize/);
+  assert.equal(reads, 2);
+  assert.equal(cancellations, 1);
+  assert.equal(releases, 1);
+});
+test("response stream accepts bounded fragmented JSON", async () => {
+  const encoded = Buffer.from(JSON.stringify({ status: "1", result: [] }), "utf8");
+  let index = 0;
+  const response = {
+    body: { getReader() {
+      return {
+        async read() {
+          if (index === encoded.length) return { done: true };
+          const value = encoded.subarray(index, index + 3);
+          index += value.length;
+          return { done: false, value };
+        },
+        releaseLock() {},
+      };
+    }},
+  };
+  assert.equal(await readResponseBounded(response), encoded.toString("utf8"));
+});
+test("untrusted content-length over maximum rejects before body consumption", async () => {
+  const response = {
+    headers: { get: () => String(300000) },
+    body: { getReader() { throw Error("must not read oversized response"); } },
+  };
+  await assert.rejects(readResponseBounded(response), /oversize declared/);
 });

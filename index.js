@@ -6,6 +6,7 @@ const express = require("express");
 const morgan = require("morgan");
 const { readPositiveInteger, createInvoiceLimiter, createInvoiceHandler } = require("./lib/zap-policy");
 const { createHistoryHandler } = require("./lib/history-policy");
+const { MAX_QUEUE_ITEMS, enqueueBanner, createBannerDelivery } = require("./lib/banner-policy");
 const fs = require("fs");
 const https = require("https");
 
@@ -34,63 +35,49 @@ const LNBITS_API_KEY = process.env.LNBITS_API_KEY;
 
 const provider = new ethers.providers.JsonRpcProvider(RPC_URL);
 
-let queue = [];
+const queue = [];
+const deliverBanner = createBannerDelivery({ endpoint: process.env.BANNER_ENDPOINT });
 
-setInterval(
-  () => {
-    // Make sure queue is > 0
-    if (queue.length === 0) {
-      return;
-    }
-
-    // Shift
-    const curString = queue.shift();
-
-    // TODO:
-    console.log(`Changing text to ${curString}`);
-    fetch(process.env.BANNER_ENDPOINT, {
-      headers: {
-        accept: "*/*",
-        "accept-language": "en-GB,en-US;q=0.9,en;q=0.8",
-        "content-type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "x-requested-with": "XMLHttpRequest",
-        "Referrer-Policy": "strict-origin-when-cross-origin",
-      },
-      body: `show=Banner&banner=${curString}&imgShow=orangeDot`,
-      method: "POST",
-    })
-      .then(() => {
-        console.log("successfully changed text");
-      })
-      .catch(() => {
-        console.log("failed to change text");
-      });
-  },
-  1 * 60 * 1000,
-);
-
-const onBlock = async (b) => {
-  const block = await provider.getBlockWithTransactions(b);
-  const relevantTxs = block.transactions
-    .filter((x) => (x.to || "").toLowerCase() === MULTISIG_ADDRESS)
-    .filter((x) =>
-      (x.value || ethers.constants.Zero).gte(ethers.utils.parseUnits("1")),
-    );
-
-  if (relevantTxs.length) {
-    console.log(b, "Payment Txs", relevantTxs);
-  }
-
-  // Add to the queue
-  relevantTxs.forEach((x) => {
-    // Max 64 characters
-    const str = ethers.utils.toUtf8String(x.data).slice(0, 64);
-    queue.push(str);
+// A delivery failure leaves the message at the head for the next retry.
+// Never run multiple deliveries concurrently.
+setInterval(() => {
+  void deliverBanner(queue).catch(() => {
+    console.error("Banner delivery unexpectedly failed");
   });
+}, 60 * 1000);
+
+const onBlock = async (blockNumber) => {
+  const block = await provider.getBlockWithTransactions(blockNumber);
+  if (!block || !Array.isArray(block.transactions)) return;
+  for (const tx of block.transactions) {
+    if ((tx.to || "").toLowerCase() !== MULTISIG_ADDRESS ||
+        !(tx.value || ethers.constants.Zero).gte(ethers.utils.parseUnits("1"))) {
+      continue;
+    }
+    if (!enqueueBanner(queue, tx, ethers.utils.toUtf8String, MAX_QUEUE_ITEMS)) {
+      // Do not log transaction bytes, untrusted display strings or secrets.
+      console.warn("Paid message skipped: invalid text or queue at capacity");
+    }
+  }
 };
 
-provider.on("block", (b) => {
-  onBlock(b);
+// Serialize block processing; catch rejected RPC/UTF-8 work rather than
+// returning an unhandled Promise from the EventEmitter callback.
+let processingBlocks = Promise.resolve();
+let outstandingBlocks = 0;
+provider.on("block", (blockNumber) => {
+  if (outstandingBlocks >= 32) {
+    console.error("Block-processing backlog limit reached");
+    return;
+  }
+  outstandingBlocks += 1;
+  processingBlocks = processingBlocks.then(
+    () => onBlock(blockNumber),
+  ).catch(() => {
+    console.error("Block processing failed");
+  }).finally(() => {
+    outstandingBlocks -= 1;
+  });
 });
 
 // **** Server ****

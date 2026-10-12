@@ -108,3 +108,21 @@ test("upstream payloads above configured ceiling are rejected", async () => {
 test("invalid monitored recipient is rejected at startup", () => {
   assert.throws(()=>createHistoryHandler({address:"INVALID",apiKey:"fake"}));
 });
+
+test("provider failures are negatively cached to bound upstream spend", async () => {
+  let calls = 0, clock = 1000;
+  const handler = createHistoryHandler({ address: addr, apiKey: "fake",
+    now: () => clock,
+    fetchImpl: async () => { calls++; return { ok: false, status: 429 }; },
+  });
+  const first = response();
+  await handler({}, first);
+  assert.equal(first.code, 502);
+  const second = response();
+  await handler({}, second);
+  assert.equal(second.code, 503);
+  assert.equal(calls, 1);
+  clock += 30001;
+  await handler({}, response());
+  assert.equal(calls, 2);
+});

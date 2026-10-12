@@ -4,7 +4,7 @@ const ethers = require("ethers");
 const asyncHandler = require("express-async-handler");
 const express = require("express");
 const morgan = require("morgan");
-const bodyParser = require("body-parser");
+const { readPositiveInteger, createInvoiceLimiter, createInvoiceHandler } = require("./lib/zap-policy");
 const fs = require("fs");
 const https = require("https");
 
@@ -97,11 +97,13 @@ provider.on("block", (b) => {
 const app = express();
 const port = 4000;
 
-app.use(cors());
-app.options("*", cors());
+// Cross-origin access is opt-in; this is not an authentication mechanism.
+const allowedOrigins = (process.env.CORS_ALLOWED_ORIGINS || "")
+  .split(",").map((origin) => origin.trim()).filter(Boolean);
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false }));
 app.use(morgan("combined"));
-app.use(bodyParser.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "4kb" }));
+app.use(express.urlencoded({ extended: false, limit: "4kb" }));
 
 // TLS private material is provisioned outside the repository.
 const privateKey = fs.readFileSync(process.env.TLS_KEY_PATH, "utf8");
@@ -118,39 +120,32 @@ app.get(
   }),
 );
 
-app.post(
-  "/zap",
-  asyncHandler(async (req, res) => {
-    console.log("zapping");
-    try {
-      let data = req.body;
-      const request = JSON.stringify({
-        out: false,
-        amount: data.amount,
-        memo: data.memo,
-      });
-      const response = await fetch(`https://${LNBITS_DOMAIN}/api/v1/payments`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Api-Key": LNBITS_API_KEY,
-        },
-        body: request,
-      });
+const maxInvoiceSats = readPositiveInteger("MAX_INVOICE_SATS", process.env.MAX_INVOICE_SATS, 100000);
+const invoicePerMinute = readPositiveInteger("INVOICE_REQUESTS_PER_MINUTE", process.env.INVOICE_REQUESTS_PER_MINUTE, 8);
+const invoiceGlobalPerMinute = readPositiveInteger("INVOICE_GLOBAL_REQUESTS_PER_MINUTE", process.env.INVOICE_GLOBAL_REQUESTS_PER_MINUTE, 120);
+const invoiceLimiter = createInvoiceLimiter({
+  limit: invoicePerMinute,
+  globalLimit: invoiceGlobalPerMinute,
+});
+const invoiceHandler = createInvoiceHandler({
+  domain: LNBITS_DOMAIN,
+  apiKey: LNBITS_API_KEY,
+  maxSats: maxInvoiceSats,
+});
 
-      // TODO: store
+app.post("/zap", invoiceLimiter, invoiceHandler);
 
-      data = await response.json();
-
-      const { payment_hash } = data;
-
-      res.status(200).json({ payment_hash });
-    } catch (error) {
-      console.error("Error creating LNBits invoice:", error.message);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  }),
-);
+// Respond with bounded, non-sensitive errors for malformed or oversized bodies.
+app.use((error, req, res, next) => {
+  if (error && error.type === "entity.too.large") {
+    return res.status(413).json({ error: "Request body too large" });
+  }
+  if (error && error.type === "entity.parse.failed") {
+    return res.status(400).json({ error: "Invalid JSON" });
+  }
+  console.error("Unhandled request error");
+  return res.status(500).json({ error: "Internal Server Error" });
+});
 
 httpsServer.listen(port, () => {
   console.log(`Express server running on port ${port}`);

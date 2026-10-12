@@ -59,3 +59,13 @@ The public `GET /history` endpoint uses Etherscan API V2 with `chainid=137` and 
 The endpoint accepts no caller-controlled address or API query. It returns up to 50 sanitized incoming transactions, caches a successful refresh for 60 seconds, deduplicates simultaneous refreshes, applies an eight-second upstream timeout and a 256 KiB parsed-response size check, negative-caches failures for 30 seconds, and fails closed on malformed responses. Add ingress-wide request quotas and structured, redacted metrics before a public multi-instance deployment; its cache is per process.
 
 The browser History page must consume `GET /history` through the same `REACT_APP_ZAP_API_ORIGIN` used for invoices, with backend `CORS_ALLOWED_ORIGINS` set to the actual frontend origin. The previously committed browser-side PolygonScan key should be invalidated through the provider if it was active. Old public Git histories may retain it until coordinated reference cleanup.
+
+## Billboard delivery safety and operational limits
+
+Incoming on-chain message bytes are decoded as UTF-8 and accepted only when they match the existing browser's letter-and-space policy (ASCII letters/spaces, 1–64 characters). All other payloads are rejected without printing raw transaction bytes. The in-memory pending queue has a capacity of 256. Its current length is exposed by the existing read-only `/queue` endpoint.
+
+The banner controller is called over HTTPS or loopback HTTP using `URLSearchParams` form encoding, preventing message characters from injecting controller fields. A failed controller delivery retains the head message for retry on the next minute tick. Concurrent sends are suppressed; provider-block processing errors are caught and a bounded block backlog prevents unbounded promise growth.
+
+**Delivery remains best-effort, not durable:** queued messages are lost on process restart and a backlog over capacity can drop newly paid messages. There is no persisted block cursor or replay/reconciliation mechanism. Do not claim paid-message delivery guarantees until durable storage, reorg handling, idempotent reconciliation and operational alerts are implemented and tested. The controller endpoint must be trusted; configure `BANNER_ENDPOINT` with HTTPS or a loopback HTTP URL.
+
+The history proxy now enforces its 256 KiB upstream response cap while streaming, before accumulating the full body. This does not replace an external API provider quota or a trusted network egress policy.

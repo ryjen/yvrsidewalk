@@ -51,3 +51,11 @@ These tests never contact a wallet and do not validate live deployment,
 rotated key privileges, or TLS trust. The separate
 `yvrsidewalk-ui` browser client presently targets localhost; configure
 its backend URL before any public deployment.
+
+## Polygon transaction history
+
+The public `GET /history` endpoint uses Etherscan API V2 with `chainid=137` and the server's fixed `MULTISIG_ADDRESS`. The legacy PolygonScan V1 endpoint is retired. Provision a **new** Etherscan API key only as the backend `ETHERSCAN_API_KEY` environment variable; do not add this key to React build configuration, query parameters sent to browsers, source control, logs, or client-side error messages. When the key is absent, this endpoint returns HTTP 503.
+
+The endpoint accepts no caller-controlled address or API query. It returns up to 50 sanitized incoming transactions, caches a successful refresh for 60 seconds, deduplicates simultaneous refreshes, applies an eight-second upstream timeout and a 256 KiB upstream response bound, and fails closed on malformed responses. Add ingress-wide request quotas and structured, redacted metrics before a public multi-instance deployment; its cache is per process.
+
+The browser History page must consume `GET /history` through the same `REACT_APP_ZAP_API_ORIGIN` used for invoices, with backend `CORS_ALLOWED_ORIGINS` set to the actual frontend origin. The previously committed browser-side PolygonScan key should be invalidated through the provider if it was active. Old public Git histories may retain it until coordinated reference cleanup.

@@ -5,6 +5,7 @@ const asyncHandler = require("express-async-handler");
 const express = require("express");
 const morgan = require("morgan");
 const { readPositiveInteger, createInvoiceLimiter, createInvoiceHandler } = require("./lib/zap-policy");
+const { createHistoryHandler } = require("./lib/history-policy");
 const fs = require("fs");
 const https = require("https");
 
@@ -134,6 +135,12 @@ const invoiceHandler = createInvoiceHandler({
 });
 
 app.post("/zap", invoiceLimiter, invoiceHandler);
+
+// Fixed-address read-only history. Etherscan credentials never reach clients.
+app.get("/history", createHistoryHandler({
+  address: MULTISIG_ADDRESS,
+  apiKey: process.env.ETHERSCAN_API_KEY,
+}));
 
 // Respond with bounded, non-sensitive errors for malformed or oversized bodies.
 app.use((error, req, res, next) => {
